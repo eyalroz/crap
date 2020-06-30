@@ -670,6 +670,43 @@ static void read_file_version (file_t * file, cvs_connection_t * s)
 }
 
 
+bool tag_name_is_valid(const char* restrict str, size_t len)
+{
+	// Rules as appear here:
+	// https://stackoverflow.com/a/26382358/1593077
+
+	// rule 1
+	if (str[0] == '.') { return false; }
+	if (strstr(str, "/.")) { return false; }
+	if (strstr(str, ".lock/")) { return false; }
+	if (strcmp(str + len - 5, ".lock") == 0) { return false; }
+	// rule 2 - unused, since theoretically we could have "allow-onelevel"
+	// if (strchr(str, '/') == NULL) { return false; }
+	// rule 3
+	if (strstr(str, "..")) { return false; }
+	// rule 4
+	for(size_t i; i < len; i++) {
+		char c = str[i];
+		bool is_ascii_control_char = (c < 0x20) || (c == 0x7F /* DEL */);
+		if (is_ascii_control_char || c == ' ' || c == '~' || c == '^' || c ==':' ) return false;
+	}
+	// rule 4
+	if ( (strpbrk(str, "?*[") != NULL) ) { return false; }
+	// rule 5
+	if ( (strpbrk(str, "?*[") != NULL) ) { return false; }
+	// rule 6
+	if ( (str[0]) || (str[len - 1] == '/') || (strstr(str, "//") != NULL) ) { return false; }
+	// rule 7
+	if (str[len - 1] == '.') { return false; }
+	// rule 8
+	if (strchr(str,"@{") != NULL) { return false; }
+	// rule 9
+	if (str[0] == '@' && len == 1) { return false; }
+	// rule 10
+	if (strchr(str, '\\') != NULL) { return false; }
+	return true;
+}
+
 static void read_file_versions (database_t * db,
                                 string_hash_t * tags,
                                 cvs_connection_t * s)
@@ -730,8 +767,14 @@ static void read_file_versions (database_t * db,
             fatal ("Tag on (%s) did not have version: %s\n",
                    file->rcs_path, s->line);
 
+        if (! tag_name_is_valid(s->line + 3, colon - s->line - 3)) {
+            len = next_line (s);
+            continue;
+        }
         const char * tag_name = cache_string_n (s->line + 3,
                                                 colon - s->line - 3);
+//        fprintf(stderr, "Got tag \"%s\" from file line %s\n", file_tags_end[-1].tag->tag, s->line);
+
         ++colon;
         if (*colon == ' ')
             ++colon;
@@ -864,8 +907,10 @@ void read_files_versions (database_t * db, cvs_connection_t * s)
     db->tags_end = db->tags;
 
     for (tag_hash_item_t * i = string_hash_begin (&tags);
-         i; i = string_hash_next (&tags, i))
+         i; i = string_hash_next (&tags, i)) {
         *db->tags_end++ = i->tag;
+        fprintf(stderr, "Added tag \"%s\"\n", i->tag.tag);
+    }
 
     assert (db->tags_end == db->tags + tags.num_entries);
 
